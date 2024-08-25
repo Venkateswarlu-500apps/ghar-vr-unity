@@ -1,0 +1,57 @@
+{
+  "results": [
+    {
+      "_id": "66c74911caada44c40464830",
+      "project_id": "312dfb22-1f16-488c-89ff-1315b17c53f5",
+      "categories": [
+        {
+          "category": "B",
+          "name": "Brochure",
+          "uid": "1fc56c68-b13b-49ac-8f6b-3be7ea4f838e",
+          "status": "active"
+        },
+        {
+          "category": "V",
+          "name": "my videos",
+          "uid": "2024fbe0-ec5d-4e32-95a4-decad9be9ad0",
+          "status": "active"
+        },
+        {
+          "category": "I",
+          "name": "my images",
+          "uid": "71736870-33ee-402e-aa5a-84c3621c04c3",
+          "status": "active"
+        },
+        {
+          "category": "Y",
+          "name": "my youtube",
+          "uid": "e0855cbf-4a66-4553-9fd1-c0c8529cc5f0",
+          "status": "active"
+        },
+        {
+          "category": "V",
+          "name": "latest videos",
+          "uid": "e6474532-37a1-4c5d-bad3-96608de79fed",
+          "status": "active"
+        },
+        {
+          "category": "W",
+          "name": "vr tour",
+          "uid": "636eb45d-5c9a-4f69-b25d-dd38e21f4463",
+          "status": "active"
+        },
+        {
+          "category": "I",
+          "name": "images 2",
+          "uid": "15ea2dea-45c4-4fd1-9889-19925f121ee5",
+          "status": "active"
+        }
+      ],
+      "created_at": "2024-08-22T14:20:01.010000",
+      "updated_at": "2024-08-24T11:59:02.407000",
+      "domain_user_id": "66bef658273c56d7426e6c14",
+      "uid": "1832dc2b-188d-4b91-b515-11690d6d4e0c"
+    }
+  ],
+  "count": 1
+}
