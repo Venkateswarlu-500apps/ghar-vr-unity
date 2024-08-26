@@ -19,9 +19,10 @@ public class DisplayCategories : MonoBehaviour
     public Transform FullScreenpanel;
     public GameObject FullScreenImagePrefab;
     public GameObject FullScreenVideoPrefab;
-    public GameObject spherePrefab; // Prefab for the 360 image sphere
-    public Transform FullScreen3DImagePanel; // Panel to contain the 360 image sphere
-
+    private Material skyboxMaterial; // Reference to the skybox material
+    public GameObject[] objectsToHide; // Array to hold the objects to hide (e.g., plane, wall)
+    public GameObject controlPanel; // Correct this to controlPanel
+    private Material originalSkyboxMaterial; // Store the original skybox material
     private MediaResponse mediaResponse;
 
     [System.Serializable]
@@ -76,28 +77,68 @@ public class DisplayCategories : MonoBehaviour
 
     void Start()
     {
-        // Load JSON data from StreamingAssets
-        string path = Path.Combine(Application.streamingAssetsPath, jsonFileName);
-        string mediaPath = Path.Combine(Application.streamingAssetsPath, mediaJsonFileName);
+        StartCoroutine(LoadData());
 
-        if (File.Exists(path))
+        // Store the original skybox material
+        originalSkyboxMaterial = RenderSettings.skybox;
+
+        if (controlPanel != null)
         {
-            string jsonData = File.ReadAllText(path);
-            PopulateCategories(jsonData);
+            Button exitButton = controlPanel.GetComponentInChildren<Button>();
+            if (exitButton != null)
+            {
+                exitButton.onClick.AddListener(Exit360View);
+            }
+            else
+            {
+                Debug.LogError("Exit button not found in the control panel.");
+            }
         }
         else
         {
-            Debug.LogError("JSON file not found at path: " + path);
+            Debug.LogError("Control panel is not assigned in the inspector.");
         }
 
-        if (File.Exists(mediaPath))
+        controlPanel.SetActive(false); // Initially hide the control panel
+    }
+
+    IEnumerator LoadData()
+    {
+        string jsonFilePath = Path.Combine(Application.streamingAssetsPath, jsonFileName);
+        string mediaJsonFilePath = Path.Combine(Application.streamingAssetsPath, mediaJsonFileName);
+
+        // Load the categories JSON file
+        using (UnityWebRequest jsonRequest = UnityWebRequest.Get(jsonFilePath))
         {
-            string mediaJsonData = File.ReadAllText(mediaPath);
-            mediaResponse = JsonUtility.FromJson<MediaResponse>(mediaJsonData);
+            yield return jsonRequest.SendWebRequest();
+
+            if (jsonRequest.result == UnityWebRequest.Result.Success)
+            {
+                string jsonData = jsonRequest.downloadHandler.text;
+                Debug.Log("Categories JSON loaded successfully.");
+                PopulateCategories(jsonData);
+            }
+            else
+            {
+                Debug.LogError($"Error loading JSON file: {jsonRequest.error}");
+            }
         }
-        else
+
+        // Load the media JSON file
+        using (UnityWebRequest mediaRequest = UnityWebRequest.Get(mediaJsonFilePath))
         {
-            Debug.LogError("Media JSON file not found at path: " + mediaPath);
+            yield return mediaRequest.SendWebRequest();
+
+            if (mediaRequest.result == UnityWebRequest.Result.Success)
+            {
+                string mediaJsonData = mediaRequest.downloadHandler.text;
+                Debug.Log("Media JSON loaded successfully.");
+                mediaResponse = JsonUtility.FromJson<MediaResponse>(mediaJsonData);
+            }
+            else
+            {
+                Debug.LogError($"Error loading media JSON file: {mediaRequest.error}");
+            }
         }
     }
 
@@ -134,31 +175,29 @@ public class DisplayCategories : MonoBehaviour
     private void OnCategoryClicked(Category category)
     {
         Debug.Log($"Category clicked: {category.name}");
-        if (category.category == "I")
+        switch (category.category)
         {
-            Debug.Log("Category image clicked");
-            displayImagesMedia(category.uid);
-        }
-        else if (category.category == "V")
-        {
-            Debug.Log("Category video clicked");
-            displayVideosMedia(category.uid);
-        }
-        else if (category.category == "3")
-        {
-            Debug.Log("Category 360 image clicked");
-            //  display360ImagesMedia(category.uid);
-        }
-        else
-        {
-            Debug.Log("Unknown category clicked");
+            case "I":
+                Debug.Log("Category image clicked");
+                displayImagesMedia(category.uid);
+                break;
+            case "V":
+                Debug.Log("Category video clicked");
+                displayVideosMedia(category.uid);
+                break;
+            case "3":
+                Debug.Log("Category 360 image clicked");
+                display360ImagesMedia(category.uid);
+                break;
+            default:
+                Debug.Log("Unknown category clicked");
+                break;
         }
     }
-
     private void display360ImagesMedia(string categoryUid)
     {
-        // Clear the full-screen panel
-        foreach (Transform child in FullScreen3DImagePanel)
+        // Clear existing media display
+        foreach (Transform child in MediaContent)
         {
             Destroy(child.gameObject);
         }
@@ -170,6 +209,45 @@ public class DisplayCategories : MonoBehaviour
         {
             // Automatically display the first 360 image in full-screen
             Show360ImageFullScreen(filteredMedia[0].file_url);
+
+            // Display filtered 360 images in the scroll view
+            foreach (var media in filteredMedia)
+            {
+                GameObject mediaItem = Instantiate(imagePrefab, MediaContent);
+
+                // Check if the Button component is present
+                Button buttonComponent = mediaItem.GetComponent<Button>();
+                if (buttonComponent == null)
+                {
+                    Debug.LogError("Button component is missing from the prefab.");
+                    continue; // Skip to the next iteration if Button is missing
+                }
+
+                // Set the media name text
+                TextMeshProUGUI textComponent = mediaItem.GetComponentInChildren<TextMeshProUGUI>();
+                if (textComponent != null)
+                {
+                    textComponent.text = media.name;
+                }
+                else
+                {
+                    Debug.LogError("TextMeshProUGUI component not found in imagePrefab!");
+                }
+
+                // Set the media thumbnail image (if applicable)
+                Image imgComponent = mediaItem.GetComponent<Image>(); // Note: No GetComponentInChildren since Image is on the root
+                if (imgComponent != null)
+                {
+                    StartCoroutine(LoadImage(media.file_url, imgComponent)); // This assumes you have a thumbnail or can use the 360 image itself
+                }
+                else
+                {
+                    Debug.LogError("Image component not found in imagePrefab!");
+                }
+
+                // Add a click listener to the button to handle 360 image clicks
+                buttonComponent.onClick.AddListener(() => OnMediaClicked(media, "360Image"));
+            }
         }
         else
         {
@@ -179,28 +257,20 @@ public class DisplayCategories : MonoBehaviour
 
     private void Show360ImageFullScreen(string imageUrl)
     {
-        // Clear the full-screen panel
-        foreach (Transform child in FullScreen3DImagePanel)
+        // Start loading the 360 image and hide the objects after loading completes
+        StartCoroutine(Load360Image(imageUrl));
+
+        // Clear the full-screen panel if needed
+        foreach (Transform child in FullScreenpanel)
         {
             Destroy(child.gameObject);
         }
 
-        // Instantiate the sphere prefab
-        GameObject sphere = Instantiate(spherePrefab, FullScreen3DImagePanel);
-
-        // Get the Renderer component from the sphere
-        Renderer renderer = sphere.GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            StartCoroutine(Load360Image(imageUrl, renderer.material));
-        }
-        else
-        {
-            Debug.LogError("Renderer component not found in spherePrefab!");
-        }
+        // Show the control panel (e.g., exit button) immediately
+        controlPanel.SetActive(true);
     }
 
-    private IEnumerator Load360Image(string url, Material material)
+    private IEnumerator Load360Image(string url)
     {
         using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url))
         {
@@ -209,7 +279,27 @@ public class DisplayCategories : MonoBehaviour
             if (request.result == UnityWebRequest.Result.Success)
             {
                 Texture2D texture = DownloadHandlerTexture.GetContent(request);
-                material.mainTexture = texture; // Apply the texture to the material
+
+                // Check if the material is assigned, otherwise create one
+                if (skyboxMaterial == null)
+                {
+                    skyboxMaterial = new Material(Shader.Find("Skybox/Panoramic"));
+                }
+
+                // Assign the texture to the skybox material
+                skyboxMaterial.SetTexture("_MainTex", texture);
+
+                // Assign the material as the skybox
+                RenderSettings.skybox = skyboxMaterial;
+
+                // Optionally, rotate the skybox to ensure the correct starting angle
+                RenderSettings.skybox.SetFloat("_Rotation", 0f); // Adjust the rotation as needed
+
+                // After the image is successfully loaded and applied, hide the specified objects
+                foreach (GameObject obj in objectsToHide)
+                {
+                    obj.SetActive(false);
+                }
             }
             else
             {
@@ -218,6 +308,23 @@ public class DisplayCategories : MonoBehaviour
         }
     }
 
+    private void Exit360View()
+    {
+        // Show the previously hidden objects
+        foreach (GameObject obj in objectsToHide)
+        {
+            obj.SetActive(true);
+        }
+
+        // Hide the control panel
+        if (controlPanel != null)
+        {
+            controlPanel.SetActive(false);
+        }
+
+        // Restore the original skybox material
+        RenderSettings.skybox = originalSkyboxMaterial;
+    }
     private void displayImagesMedia(string categoryUid)
     {
         // Clear existing media display
@@ -331,27 +438,30 @@ public class DisplayCategories : MonoBehaviour
     }
 
 
-    private IEnumerator LoadImage(string url, Image imgComponent)
+    IEnumerator LoadImage(string url, Image targetImage)
     {
-        using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url))
+        using (UnityWebRequest www = UnityWebRequestTexture.GetTexture(url))
         {
-            yield return request.SendWebRequest();
+            yield return www.SendWebRequest();
 
-            if (request.result == UnityWebRequest.Result.Success)
+            if (www.result == UnityWebRequest.Result.Success)
             {
-                Texture2D texture = DownloadHandlerTexture.GetContent(request);
-                imgComponent.sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+                Texture2D texture = DownloadHandlerTexture.GetContent(www);
+                Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+                targetImage.sprite = sprite;
             }
             else
             {
-                Debug.LogError("Failed to load image: " + request.error);
+                Debug.LogError($"Failed to load image from URL: {url}. Error: {www.error}");
             }
         }
     }
 
+
     private void OnMediaClicked(MediaFile media, string mediaType)
     {
         Debug.Log($"Media clicked: {media.name}, URL: {media.file_url}, mediaType: {mediaType}");
+
         // Clear the full-screen panel
         foreach (Transform child in FullScreenpanel)
         {
@@ -360,7 +470,7 @@ public class DisplayCategories : MonoBehaviour
 
         if (mediaType == "Image")
         {
-            // Handle image click
+            // Handle normal image click
             Debug.Log("Image clicked");
             ShowImageFullScreen(media.file_url);
         }
@@ -369,6 +479,12 @@ public class DisplayCategories : MonoBehaviour
             // Handle video click
             Debug.Log("Video clicked");
             ShowVideoFullScreen(media.file_url);
+        }
+        else if (mediaType == "360Image")
+        {
+            // Handle 360 image click
+            Debug.Log("360 Image clicked");
+            Show360ImageFullScreen(media.file_url);
         }
     }
 

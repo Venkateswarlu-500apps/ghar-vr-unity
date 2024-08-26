@@ -45,10 +45,16 @@
           "name": "images 2",
           "uid": "15ea2dea-45c4-4fd1-9889-19925f121ee5",
           "status": "active"
+        },
+        {
+          "category": "3",
+          "name": "360 images",
+          "uid": "6b3e9edb-60b2-425b-be5c-6e1bcd8b2606",
+          "status": "active"
         }
       ],
       "created_at": "2024-08-22T14:20:01.010000",
-      "updated_at": "2024-08-24T11:59:02.407000",
+      "updated_at": "2024-08-26T05:23:24.068000",
       "domain_user_id": "66bef658273c56d7426e6c14",
       "uid": "1832dc2b-188d-4b91-b515-11690d6d4e0c"
     }
