@@ -29,6 +29,24 @@ public class DisplayCategories : MonoBehaviour
         public string name;
         public string file_url;
         public string? is_360;
+        public List<HotspotData> walk_through_data; // Data for hotspots
+    }
+
+    [System.Serializable]
+    public class HotspotMessage
+    {
+        public string text;
+        public string color;
+        public int size;
+    }
+
+    [System.Serializable]
+    public class HotspotData
+    {
+        public Vector3 position;
+        public string imageUid;
+        public string pathIconUrl;
+        public HotspotMessage message;
     }
 
     [System.Serializable]
@@ -97,7 +115,6 @@ public class DisplayCategories : MonoBehaviour
         }
     }
 
-
     private void BackToProjectsWall()
     {
         Debug.Log("Navigating back to the projects wall...");
@@ -159,8 +176,6 @@ public class DisplayCategories : MonoBehaviour
         Debug.Log("Navigating back to the projects wall...");
     }
 
-
-
     public void InitializeDisplay()
     {
         Debug.Log("initializing display");
@@ -197,6 +212,11 @@ public class DisplayCategories : MonoBehaviour
     {
         foreach (var category in categories)
         {
+            // Check if the category has any items
+            if (category.items.Count <= 0)
+            {
+                continue; // Skip the category if there are no items
+            }
             // Instantiate a new category button from the prefab
             GameObject categoryButton = Instantiate(categoryPrefab, CategoryNameContent);
 
@@ -233,6 +253,10 @@ public class DisplayCategories : MonoBehaviour
                 Debug.Log("Category 360 image clicked");
                 DisplayMedia(category.items, "360Image");
                 break;
+            case "W":
+                Debug.Log("Category VRTour clicked");
+                DisplayMedia(category.items, "VRTour");
+                break;
             default:
                 Debug.Log("Unknown category clicked");
                 break;
@@ -266,6 +290,11 @@ public class DisplayCategories : MonoBehaviour
             else if (mediaType == "360Image")
             {
                 // Show360ImageFullScreen(items[0].file_url);
+            }
+            else if (mediaType == "VRTour")
+            {
+                StartVRTour(items);
+                return;
             }
 
             // Display filtered media in the scroll view
@@ -306,6 +335,15 @@ public class DisplayCategories : MonoBehaviour
         {
             Debug.Log("No media found for the selected category.");
         }
+    }
+
+    private void StartVRTour(List<GalleryItem> items)
+    {
+        return;
+      //  vrTourItems = items; // Store the VR tour items
+      //  currentImageIndex = 0; // Start with the first image
+      //  Show360ImageFullScreen(vrTourItems[currentImageIndex].file_url);
+       // CreateHotspots(vrTourItems[currentImageIndex].walk_through_data);
     }
 
     private void Show360ImageFullScreen(string imageUrl)
@@ -393,7 +431,6 @@ public class DisplayCategories : MonoBehaviour
             exitButtonObject.SetActive(false);
         }
     }
-
 
     private IEnumerator LoadImage(string url, Image targetImage)
     {
