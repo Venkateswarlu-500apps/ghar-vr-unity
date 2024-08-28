@@ -3,13 +3,38 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
-using System;  // Make sure this is included to use Convert
+using System;
+using UnityEngine.Networking;
 
 public class AddProjectsDynamically : MonoBehaviour
 {
-    public string jsonFilePath = "projects.json"; // Set this to your file name if in StreamingAssets
+    public string ProjectsApiUrl = "https://api.mantrareal.com/db/projects?page=1&limit=25&sort=desc&search=";
     public GameObject content; // Reference to the Content object with a Grid Layout Group
+    public GameObject projectCardPrefab; // Assign this prefab in the Unity Inspector
+    public GameObject galleryViewPanel;
+    public GameObject projectWallPanel;
+
+    [System.Serializable]
+    public class GalleryItem
+    {
+        public string name;
+        public string file_url;
+        public string? is_360;
+    }
+
+    [System.Serializable]
+    public class ProjectCategory
+    {
+        public string category_name;
+        public string category_type;
+        public List<GalleryItem> items;
+    }
+
+    [System.Serializable]
+    public class ProjectJson
+    {
+        public List<ProjectCategory> categoriesWithGallery;
+    }
 
     [System.Serializable]
     public class Project
@@ -22,6 +47,7 @@ public class AddProjectsDynamically : MonoBehaviour
         public string domain_user_id;
         public string uid;
         public string logo; // Base64 encoded image data
+        public ProjectJson project_json;
     }
 
     [System.Serializable]
@@ -33,17 +59,33 @@ public class AddProjectsDynamically : MonoBehaviour
 
     void Start()
     {
-        // Load JSON data from StreamingAssets
-        string path = Path.Combine(Application.streamingAssetsPath, jsonFilePath);
-        
-        if (File.Exists(path))
+        StartCoroutine(FetchProjectData());
+    }
+
+    IEnumerator FetchProjectData()
+    {
+        Debug.Log("Started fetching");
+        using (UnityWebRequest request = UnityWebRequest.Get(ProjectsApiUrl))
         {
-            string jsonData = File.ReadAllText(path);
-            ProcessJsonData(jsonData);
-        }
-        else
-        {
-            Debug.LogError("JSON file not found at path: " + path);
+            // Set the headers
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("x-mantra-app", "gharpe.vr");
+            request.SetRequestHeader("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJoLmFyaXNoYW5rZXIuNTAwYXBwc0BnbWFpbC5jb20iLCJfaWQiOiI2NmJlZjY1ODI3M2M1NmQ3NDI2ZTZjMTQiLCJleHAiOjE3MjY5ODI4Nzl9.3xt-XAbef6LA6Mo5bnUzCq_usX-oO8BpYOFkT80wOhw");
+
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
+            {
+                Debug.LogError("Error fetching project data: " + request.error);
+            }
+            else
+            {
+                string jsonData = request.downloadHandler.text;
+                // Save data
+                PlayerPrefs.SetString("projectData", jsonData);
+                PlayerPrefs.Save();
+                ProcessJsonData(jsonData);
+            }
         }
     }
 
@@ -62,74 +104,69 @@ public class AddProjectsDynamically : MonoBehaviour
             Debug.LogError("Content object or JSON data is not set.");
         }
     }
+    
 void AppendProjectCard(Project project)
 {
     try
     {
-        // Remove the data URL prefix if present
-        string base64Data = project.logo;
-        if (base64Data.StartsWith("data:image/jpeg;base64,"))
+        // Instantiate the project card prefab
+        GameObject projectObject = Instantiate(projectCardPrefab, content.transform);
+
+        // Set the project name text
+        TextMeshProUGUI nameComponent = projectObject.GetComponentInChildren<TextMeshProUGUI>();
+        if (nameComponent != null)
         {
-            base64Data = base64Data.Substring("data:image/jpeg;base64,".Length);
+            nameComponent.text = project.name;
+        }
+        else
+        {
+            Debug.LogError("TextMeshProUGUI component not found in project card prefab.");
         }
 
-        // Convert the Base64 string to a byte array
-        byte[] imageBytes = Convert.FromBase64String(base64Data);
-        Texture2D texture = new Texture2D(2, 2);
-        texture.LoadImage(imageBytes);
+        // Set the logo image if it exists
+        Image logoImage = projectObject.GetComponentInChildren<Image>();
+        if (logoImage != null && !string.IsNullOrEmpty(project.logo))
+        {
+            string base64Data = project.logo;
+            if (base64Data.StartsWith("data:image/jpeg;base64,"))
+            {
+                base64Data = base64Data.Substring("data:image/jpeg;base64,".Length);
+            }
+            else if (base64Data.StartsWith("data:image/png;base64,"))
+            {
+                base64Data = base64Data.Substring("data:image/png;base64,".Length);
+            }
 
-        // Create a new GameObject to hold the image
-        GameObject imageObject = new GameObject("GridImage");
-        imageObject.transform.SetParent(content.transform, false);
+            byte[] imageBytes = Convert.FromBase64String(base64Data);
+            Texture2D texture = new Texture2D(2, 2);
+            texture.LoadImage(imageBytes);
 
-        // Add the Image component to the new GameObject
-        Image imageComponent = imageObject.AddComponent<Image>();
+            Rect rect = new Rect(0, 0, texture.width, texture.height);
+            logoImage.sprite = Sprite.Create(texture, rect, new Vector2(0.5f, 0.5f));
+        }
+        else
+        {
+            Debug.LogWarning("Logo image is null or not found.");
+        }
 
-        // Convert the texture to a Sprite and assign it to the Image component
-        Rect rect = new Rect(0, 0, texture.width, texture.height);
-        imageComponent.sprite = Sprite.Create(texture, rect, new Vector2(0.5f, 0.5f));
+        // Add the click event listener to the button
+        Button button = projectObject.GetComponent<Button>();
+        if (button != null)
+        {
+            Debug.Log("Adding click listener to the button.");
+            button.onClick.AddListener(() => OnProjectCardClicked(project));
+        }
+        else
+        {
+            Debug.LogError("Button component not found in project card prefab.");
+        }
 
-        // Adjust the RectTransform to fit within the grid cell
-        RectTransform rectTransform = imageComponent.GetComponent<RectTransform>();
-        rectTransform.sizeDelta = new Vector2(texture.width, texture.height);
-        rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-        rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-        rectTransform.pivot = new Vector2(0.5f, 0.5f);
-
-        // Add a TextMeshProUGUI component to display the project name
-        GameObject textObject = new GameObject("ImageText");
-        textObject.transform.SetParent(imageObject.transform, false);
-
-        TextMeshProUGUI textComponent = textObject.AddComponent<TextMeshProUGUI>();
-        textComponent.text = project.name;
-        textComponent.fontSize = 24;
-        textComponent.color = Color.white;
-        textComponent.alignment = TextAlignmentOptions.Bottom;
-
-        // Set up text to truncate with ellipsis
-        textComponent.enableWordWrapping = false;
-        textComponent.overflowMode = TextOverflowModes.Ellipsis;
-
-        // Adjust the RectTransform of the Text to be positioned at the bottom of the image
-        RectTransform textRectTransform = textComponent.GetComponent<RectTransform>();
-        textRectTransform.anchorMin = new Vector2(0, 0);
-        textRectTransform.anchorMax = new Vector2(1, 0);
-        textRectTransform.pivot = new Vector2(0.5f, 0);
-        textRectTransform.anchoredPosition = new Vector2(0, 10);
-        textRectTransform.sizeDelta = new Vector2(0, 30);
-
-        // Add a Button component to the imageObject
-        Button button = imageObject.AddComponent<Button>();
-
-        // Add the click event listener
-        button.onClick.AddListener(() => OnProjectCardClicked(project));
-
-        // Ensure the image is placed within the grid layout properly
-        imageObject.transform.SetAsLastSibling();
+        // Ensure the project card is placed within the grid layout properly
+        projectObject.transform.SetAsLastSibling();
     }
-    catch (FormatException e)
+    catch (Exception e)
     {
-        Debug.LogError($"Invalid Base64 string for project: {project.name}. Error: {e.Message}");
+        Debug.LogError($"Error processing project: {project.name}. Error: {e.Message}");
     }
 }
 
@@ -137,7 +174,47 @@ void AppendProjectCard(Project project)
 void OnProjectCardClicked(Project project)
 {
     Debug.Log($"Project card clicked: {project.name}");
-    // Add your logic here, such as opening a detailed view, navigating to another scene, etc.
+    // Serialize the selected project to JSON and save it in PlayerPrefs
+    string projectJson = JsonUtility.ToJson(project);
+    PlayerPrefs.SetString("SelectedProject", projectJson);
+    PlayerPrefs.Save();
+
+    // Switch to the gallery view
+    ShowGalleryView();  
 }
+
+
+    void ShowGalleryView()
+{
+    // Assuming you are using panels to switch between views, deactivate the project wall panel and activate the gallery view panel
+    if (projectWallPanel != null && galleryViewPanel != null)
+    {
+        projectWallPanel.SetActive(false);  // Hide the project wall panel
+        galleryViewPanel.SetActive(true);   // Show the gallery view panel
+    }
+    else
+    {
+        Debug.LogError("Panel references not set in the inspector.");
+    }
+
+    // Trigger the loading of the gallery view content
+    DisplayCategories displayCategories = galleryViewPanel.GetComponent<DisplayCategories>();
+    if (displayCategories != null)
+    {   
+        Debug.Log("calling  the InitializeDisplay");
+        displayCategories.InitializeDisplay();  // Call the custom method instead of Start()
+    }
+    else
+    {
+        Debug.LogError("DisplayCategories script not found on the gallery view panel.");
+    }
+}
+
+    // This method is called when the GameObject or its component is enabled
+    private void OnEnable()
+    {
+        Debug.Log($"{gameObject.name} is now active.");
+       // RunFunctionWhenActive();
+    }
 
 }
