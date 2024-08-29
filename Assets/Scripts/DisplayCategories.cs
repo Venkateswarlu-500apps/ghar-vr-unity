@@ -5,7 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.Networking;
 using UnityEngine.Video;
-
+using UnityEngine.EventSystems;
 public class DisplayCategories : MonoBehaviour
 {
     public GameObject categoryPrefab; // Prefab for the category button
@@ -22,13 +22,20 @@ public class DisplayCategories : MonoBehaviour
     public GameObject galleryViewPanel;
     public GameObject projectWallPanel;
     private Material originalSkyboxMaterial; // Store the original skybox material
-
+    public GameObject hotspotPrefab; // Prefab for hotspots
+    public Transform hotspotContainer; // Container for hotspots
+    private int currentImageIndex = 0; // To keep track of the current 360° image
+    private List<GalleryItem> vrTourItems; // To store VR tour items
+    public Sprite[] pathIcons; // Array to hold all sprites
     [System.Serializable]
     public class GalleryItem
     {
         public string name;
+        public string uid;
         public string file_url;
+        public string? tts_description;
         public string? is_360;
+        public string? is_default_image;
         public List<HotspotData> walk_through_data; // Data for hotspots
     }
 
@@ -142,6 +149,12 @@ public class DisplayCategories : MonoBehaviour
 
         // Clear existing category display
         foreach (Transform child in CategoryNameContent)
+        {
+            Destroy(child.gameObject);
+        }
+
+        // Clear existing hotspots
+        foreach (Transform child in hotspotContainer)
         {
             Destroy(child.gameObject);
         }
@@ -300,7 +313,10 @@ public class DisplayCategories : MonoBehaviour
             // Display filtered media in the scroll view
             foreach (var item in items)
             {
+                // Debug.Log("is_360", item.is_360);
                 GameObject mediaItem = Instantiate(mediaType == "Video" ? videoPrefab : imagePrefab, MediaContent);
+
+                Debug.Log("item.is_360" + item.is_360);
 
                 // Check if the Button component is present
                 Button buttonComponent = mediaItem.GetComponent<Button>();
@@ -339,18 +355,134 @@ public class DisplayCategories : MonoBehaviour
 
     private void StartVRTour(List<GalleryItem> items)
     {
-        return;
-      //  vrTourItems = items; // Store the VR tour items
-      //  currentImageIndex = 0; // Start with the first image
-      //  Show360ImageFullScreen(vrTourItems[currentImageIndex].file_url);
-       // CreateHotspots(vrTourItems[currentImageIndex].walk_through_data);
+        vrTourItems = items; // Store the VR tour items
+        currentImageIndex = 0; // Default to the first image
+
+        // Find the image marked as default
+        for (int i = 0; i < vrTourItems.Count; i++)
+        {
+            // Check if the image is marked as default
+            if (vrTourItems[i].is_default_image == "true") // Compare as string
+            {
+                currentImageIndex = i;
+                break; // Stop as soon as we find the default image
+            }
+        }
+
+        Show360ImageFullScreen(vrTourItems[currentImageIndex].file_url);
+
+        // Ensure walk_through_data is not null before passing it
+        if (vrTourItems[currentImageIndex].walk_through_data != null)
+        {
+            CreateHotspots(vrTourItems[currentImageIndex].walk_through_data);
+        }
+        else
+        {
+            Debug.LogWarning("No walk_through_data found for the default image.");
+        }
+    }
+    private void CreateHotspots(List<HotspotData> hotspots)
+    {
+        // Log the number of hotspots to be created
+        Debug.Log($"Creating {hotspots.Count} hotspots");
+
+        // Clear existing hotspots
+        foreach (Transform child in hotspotContainer)
+        {
+            Destroy(child.gameObject);
+        }
+
+        // Get the camera (assuming the main camera is used for VR)
+        Camera vrCamera = Camera.main;
+        if (vrCamera == null)
+        {
+            Debug.LogError("Main camera not found. Ensure the camera is tagged as MainCamera.");
+            return;
+        }
+
+        // Iterate over hotspot data and create hotspots
+        foreach (var hotspotData in hotspots)
+        {
+            Debug.Log($"Creating hotspot at position: {hotspotData.position}, ImageUid: {hotspotData.imageUid}");
+
+            // Instantiate the hotspot prefab
+            GameObject hotspot = Instantiate(hotspotPrefab, hotspotContainer);
+
+            // Adjust position and invert X-axis
+            hotspot.transform.localPosition = new Vector3(
+                -hotspotData.position.x,
+                hotspotData.position.y,
+                hotspotData.position.z
+            );
+
+            // Reset rotation to identity to ensure no unwanted rotation
+            hotspot.transform.localRotation = Quaternion.identity;
+
+            // Calculate the direction from the hotspot to the camera
+            Vector3 directionToCamera = (vrCamera.transform.position - hotspot.transform.position).normalized;
+
+            // Correct the rotation to make the hotspot face the camera
+            hotspot.transform.rotation = Quaternion.LookRotation(directionToCamera);
+
+            // Flip the hotspot around the Y-axis to ensure text is not mirrored
+            hotspot.transform.Rotate(0, 180, 0);
+
+            // Ensure the Button component is set up correctly
+            Button hotspotButton = hotspot.GetComponentInChildren<Button>();
+            if (hotspotButton != null && !string.IsNullOrEmpty(hotspotData.imageUid))
+            {
+                hotspotButton.onClick.AddListener(() => ChangeVRImage(hotspotData.imageUid));
+                Debug.Log($"Hotspot button listener added for ImageUid: {hotspotData.imageUid}");
+            }
+
+            // Load the icon using the filename
+            if (!string.IsNullOrEmpty(hotspotData.pathIconUrl))
+            {
+                string filename = System.IO.Path.GetFileName(hotspotData.pathIconUrl); // Extract the filename
+                AssignIconFromArray(filename, hotspotButton.GetComponent<Image>());
+            }
+        }
+    }
+
+    // Method to assign the icon from the array
+    private void AssignIconFromArray(string filename, Image targetImage)
+    {
+        foreach (Sprite sprite in pathIcons)
+        {
+            if (sprite.name == filename.Replace(".png", ""))
+            {
+                targetImage.sprite = sprite;
+                Debug.Log($"Assigned icon from array: {filename}");
+                return;
+            }
+        }
+        Debug.LogError($"Icon with filename {filename} not found in the array.");
+    }
+
+    private void ChangeVRImage(string imageUid)
+    {
+        Debug.Log("Changing VR image to: " + imageUid);
+
+        for (int i = 0; i < vrTourItems.Count; i++)
+        {
+            Debug.Log("vrTourItems[i].uid: " + vrTourItems[i].uid);
+
+            // Trim both strings to ensure there are no leading/trailing spaces causing mismatch
+            if (vrTourItems[i].uid == imageUid)
+            {
+                currentImageIndex = i;
+                Show360ImageFullScreen(vrTourItems[currentImageIndex].file_url);
+                CreateHotspots(vrTourItems[currentImageIndex].walk_through_data);
+                break;
+            }
+        }
     }
 
     private void Show360ImageFullScreen(string imageUrl)
     {
         // Start loading the 360 image and hide the objects after loading completes
-        StartCoroutine(Load360Image(imageUrl));
-
+        CoroutineManager.StartManagedCoroutine(Load360Image(imageUrl));
+        
         // Clear the full-screen panel if needed
         foreach (Transform child in FullScreenpanel)
         {
@@ -417,6 +549,12 @@ public class DisplayCategories : MonoBehaviour
 
         // Restore the original skybox material
         RenderSettings.skybox = originalSkyboxMaterial;
+
+        // Clear existing hotspots
+        foreach (Transform child in hotspotContainer)
+        {
+            Destroy(child.gameObject);
+        }
 
         // Show the previously hidden objects
         foreach (GameObject obj in objectsToHide)
