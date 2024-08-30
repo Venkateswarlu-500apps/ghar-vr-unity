@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using UnityEngine.Networking;
 using UnityEngine.Video;
 using UnityEngine.EventSystems;
+using YoutubePlayer;
+using System;
 public class DisplayCategories : MonoBehaviour
 {
     public GameObject categoryPrefab; // Prefab for the category button
@@ -27,6 +29,10 @@ public class DisplayCategories : MonoBehaviour
     private int currentImageIndex = 0; // To keep track of the current 360° image
     private List<GalleryItem> vrTourItems; // To store VR tour items
     public Sprite[] pathIcons; // Array to hold all sprites
+
+    public GameObject youtubePlayerPrefab;
+
+    private GameObject youtubePlayerInstance;
     [System.Serializable]
     public class GalleryItem
     {
@@ -172,6 +178,13 @@ public class DisplayCategories : MonoBehaviour
             videoPlayerObject = null; // Reset the reference
         }
 
+        // Stop any YouTube video that might be playing
+        if (youtubePlayerInstance != null)
+        {
+            Destroy(youtubePlayerInstance);
+            youtubePlayerInstance = null;
+        }
+
         // Hide the control panel
         if (controlPanel != null)
         {
@@ -272,6 +285,10 @@ public class DisplayCategories : MonoBehaviour
                 Debug.Log("Category VRTour clicked");
                 DisplayMedia(category.items, "VRTour");
                 break;
+            case "Y":
+                Debug.Log("Category YouTube clicked");
+                DisplayMedia(category.items, "YouTube");
+                break;
             default:
                 Debug.Log("Unknown category clicked");
                 break;
@@ -311,6 +328,10 @@ public class DisplayCategories : MonoBehaviour
                 StartVRTour(items);
                 return;
             }
+            else if (mediaType == "YouTube")
+            {
+                DisplayYouTubeGallery(items[0]);
+            }
 
             // Display filtered media in the scroll view
             foreach (var item in items)
@@ -341,7 +362,7 @@ public class DisplayCategories : MonoBehaviour
 
                 // Set the media image or thumbnail
                 Image imgComponent = mediaItem.GetComponent<Image>(); // Note: No GetComponentInChildren since Image is on the root
-                if (imgComponent != null && mediaType != "Video")
+                if (imgComponent != null && mediaType != "Video" && mediaType != "YouTube")
                 {
                     StartCoroutine(LoadImage(item.file_url, imgComponent));
                 }
@@ -674,8 +695,53 @@ public class DisplayCategories : MonoBehaviour
             Debug.Log("360 Image clicked");
             Show360ImageFullScreen(media.file_url);
         }
+        else if (mediaType == "YouTube")
+        {
+            Debug.Log(media.name + "YouTube Clicked");
+            DisplayYouTubeGallery(media);
+        }
     }
+    void DisplayYouTubeGallery(GalleryItem youtube)
+    {
+        // Clear the full-screen panel
+        foreach (Transform child in FullScreenpanel)
+        {
+            Destroy(child.gameObject);
+        }
 
+        // Check if the prefab is assigned
+        if (youtubePlayerPrefab == null)
+        {
+            Debug.LogError("YouTube Player prefab is not assigned.");
+            return;
+        }
+
+        // Instantiate the YouTube Player prefab as a child of selectedMediaDisplay
+        youtubePlayerInstance = Instantiate(youtubePlayerPrefab, FullScreenpanel.transform);
+
+        // Use GetComponentInChildren to search for the YoutubePlayer component in the prefab and its children
+        YoutubePlayer.YoutubePlayer youtubePlayerComponent = youtubePlayerInstance.GetComponentInChildren<YoutubePlayer.YoutubePlayer>();
+
+
+        if (youtubePlayerComponent == null)
+        {
+            Debug.LogError("Failed to get YoutubePlayer component from the prefab.");
+            return;
+        }
+
+        // Validate and use a correct YouTube URL
+        string videoUrl = youtube.file_url; // Example of an unrestricted video
+
+        // Try playing the video and catch any exceptions for unplayable content
+        try
+        {
+            youtubePlayerComponent.PlayVideoAsync(videoUrl);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError("Failed to play video: " + ex.Message);
+        }
+    }
     private void ShowImageFullScreen(string imageUrl)
     {
         // Clear the full-screen panel
