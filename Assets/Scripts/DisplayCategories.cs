@@ -175,6 +175,8 @@ public class DisplayCategories : MonoBehaviour
         // Hide the control panel
         if (controlPanel != null)
         {
+            GameObject exitButtonObject = controlPanel.transform.Find("ExitVrButton").gameObject; // Get the GameObject of the Exit button
+            exitButtonObject.SetActive(false);
             controlPanel.SetActive(false);
         }
 
@@ -383,7 +385,6 @@ public class DisplayCategories : MonoBehaviour
     }
     private void CreateHotspots(List<HotspotData> hotspots)
     {
-        // Log the number of hotspots to be created
         Debug.Log($"Creating {hotspots.Count} hotspots");
 
         // Clear existing hotspots
@@ -403,46 +404,102 @@ public class DisplayCategories : MonoBehaviour
         // Iterate over hotspot data and create hotspots
         foreach (var hotspotData in hotspots)
         {
-            Debug.Log($"Creating hotspot at position: {hotspotData.position}, ImageUid: {hotspotData.imageUid}");
-
-            // Instantiate the hotspot prefab
-            GameObject hotspot = Instantiate(hotspotPrefab, hotspotContainer);
-
-            // Adjust position and invert X-axis
-            hotspot.transform.localPosition = new Vector3(
-                -hotspotData.position.x,
-                hotspotData.position.y,
-                hotspotData.position.z
-            );
-
-            // Reset rotation to identity to ensure no unwanted rotation
-            hotspot.transform.localRotation = Quaternion.identity;
-
-            // Calculate the direction from the hotspot to the camera
-            Vector3 directionToCamera = (vrCamera.transform.position - hotspot.transform.position).normalized;
-
-            // Correct the rotation to make the hotspot face the camera
-            hotspot.transform.rotation = Quaternion.LookRotation(directionToCamera);
-
-            // Flip the hotspot around the Y-axis to ensure text is not mirrored
-            hotspot.transform.Rotate(0, 180, 0);
-
-            // Ensure the Button component is set up correctly
-            Button hotspotButton = hotspot.GetComponentInChildren<Button>();
-            if (hotspotButton != null && !string.IsNullOrEmpty(hotspotData.imageUid))
+            // Check if position exists in the hotspot data
+            if (hotspotData.position != null)
             {
-                hotspotButton.onClick.AddListener(() => ChangeVRImage(hotspotData.imageUid));
-                Debug.Log($"Hotspot button listener added for ImageUid: {hotspotData.imageUid}");
-            }
+                Debug.Log($"Creating hotspot at position: {hotspotData.position}, ImageUid: {hotspotData.imageUid}");
 
-            // Load the icon using the filename
-            if (!string.IsNullOrEmpty(hotspotData.pathIconUrl))
-            {
-                string filename = System.IO.Path.GetFileName(hotspotData.pathIconUrl); // Extract the filename
-                AssignIconFromArray(filename, hotspotButton.GetComponent<Image>());
+                // Instantiate the hotspot prefab
+                GameObject hotspot = Instantiate(hotspotPrefab, hotspotContainer);
+
+                // Adjust position and invert X-axis
+                hotspot.transform.localPosition = new Vector3(
+                    -hotspotData.position.x,
+                    hotspotData.position.y,
+                    hotspotData.position.z
+                );
+
+                // Reset rotation to identity to ensure no unwanted rotation
+                hotspot.transform.localRotation = Quaternion.identity;
+
+                // Calculate the direction from the hotspot to the camera
+                Vector3 directionToCamera = (vrCamera.transform.position - hotspot.transform.position).normalized;
+
+                // Correct the rotation to make the hotspot face the camera
+                hotspot.transform.rotation = Quaternion.LookRotation(directionToCamera);
+
+                // Flip the hotspot around the Y-axis to ensure text is not mirrored
+                hotspot.transform.Rotate(0, 180, 0);
+
+                // Handle the button if an icon URL is present
+                Button hotspotButton = hotspot.GetComponentInChildren<Button>();
+                if (!string.IsNullOrEmpty(hotspotData.pathIconUrl))
+                {
+                    if (hotspotButton != null && !string.IsNullOrEmpty(hotspotData.imageUid))
+                    {
+                        hotspotButton.onClick.AddListener(() => ChangeVRImage(hotspotData.imageUid));
+                        Debug.Log($"Hotspot button listener added for ImageUid: {hotspotData.imageUid}");
+
+                        string filename = System.IO.Path.GetFileName(hotspotData.pathIconUrl);
+                        AssignIconFromArray(filename, hotspotButton.GetComponent<Image>());
+                    }
+
+                    // Remove message text if button is present
+                    TextMeshProUGUI messageText = hotspot.GetComponentInChildren<TextMeshProUGUI>();
+                    if (hotspotData.message != null && !string.IsNullOrEmpty(hotspotData.message.text))
+                    {
+                        messageText.text = hotspotData.message.text;
+                        messageText.color = HexToColor(hotspotData.message.color);
+                        messageText.fontSize = hotspotData.message.size;
+                    }
+                    else
+                    {
+                        Debug.Log("No message text found");
+                        Destroy(messageText.gameObject);
+                    }
+                }
+                else if (hotspotData.message != null && !string.IsNullOrEmpty(hotspotData.message.text))
+                {
+                    // Remove button if only a message is needed
+                    if (hotspotButton != null)
+                    {
+                        Destroy(hotspotButton.gameObject);
+                    }
+
+                    // Create a new TextMeshProUGUI object to display the message
+                    GameObject textObject = new GameObject("HotspotMessage");
+                    textObject.transform.SetParent(hotspot.transform, false); // Set the parent to the hotspot
+
+                    // Set the position relative to the hotspot
+                    textObject.transform.localPosition = Vector3.zero;
+
+                    // Add TextMeshProUGUI component
+                    TextMeshProUGUI messageText = textObject.AddComponent<TextMeshProUGUI>();
+                    messageText.text = hotspotData.message.text;
+                    messageText.color = HexToColor(hotspotData.message.color);
+                    messageText.fontSize = hotspotData.message.size;
+                    messageText.alignment = TextAlignmentOptions.Center;
+
+                    // Set additional properties to make the text visible
+                    messageText.enableWordWrapping = true;
+                    messageText.rectTransform.sizeDelta = new Vector2(200, 100); // Set appropriate size
+                }
             }
         }
     }
+
+
+    // Method to convert Hex color to Unity Color
+    private Color HexToColor(string hex)
+    {
+        if (ColorUtility.TryParseHtmlString(hex, out Color color))
+        {
+            return color;
+        }
+        Debug.LogError($"Invalid hex color: {hex}. Defaulting to white.");
+        return Color.white;
+    }
+
 
     // Method to assign the icon from the array
     private void AssignIconFromArray(string filename, Image targetImage)
@@ -482,7 +539,7 @@ public class DisplayCategories : MonoBehaviour
     {
         // Start loading the 360 image and hide the objects after loading completes
         CoroutineManager.StartManagedCoroutine(Load360Image(imageUrl));
-        
+
         // Clear the full-screen panel if needed
         foreach (Transform child in FullScreenpanel)
         {

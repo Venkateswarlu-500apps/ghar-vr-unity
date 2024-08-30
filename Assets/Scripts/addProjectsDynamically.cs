@@ -88,7 +88,7 @@ public class AddProjectsDynamically : MonoBehaviour
         if (string.IsNullOrEmpty(accessToken))
         {
             Debug.LogError("Access token not found. Please log in.");
-            return;
+          //  return;
         }
 
         // Start fetching project data
@@ -103,8 +103,9 @@ public class AddProjectsDynamically : MonoBehaviour
             // Set the headers
             request.SetRequestHeader("Content-Type", "application/json");
             request.SetRequestHeader("x-mantra-app", "gharpe.vr");
-            request.SetRequestHeader("Authorization", "Bearer " + accessToken); // Use the retrieved token
- 
+          //  request.SetRequestHeader("Authorization", "Bearer " + accessToken); // Use the retrieved token
+             request.SetRequestHeader("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJoLmFyaXNoYW5rZXIuNTAwYXBwc0BnbWFpbC5jb20iLCJfaWQiOiI2NmJlZjY1ODI3M2M1NmQ3NDI2ZTZjMTQiLCJleHAiOjE3MjY5ODI4Nzl9.3xt-XAbef6LA6Mo5bnUzCq_usX-oO8BpYOFkT80wOhw");
+
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
